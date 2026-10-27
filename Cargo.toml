@@ -1,0 +1,7 @@
+[package]
+name = "lu-decomp-gpu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cubecl = { version = "0.11.3", features = ["wgpu"] }

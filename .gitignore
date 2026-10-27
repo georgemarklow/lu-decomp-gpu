@@ -1,0 +1,13 @@
+
+# Rust build output
+/target/
+
+# Python temporary files
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Local experimental results
+/results/
