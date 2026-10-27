@@ -8,6 +8,3 @@ __pycache__/
 
 # macOS
 .DS_Store
-
-# Local experimental results
-/results/
