@@ -11,3 +11,9 @@ cargo run --release
 ```aiignore
 python3 scripts/plot_results.py
 ```
+
+## Resources
+| Item | Link |
+|---|---|
+| LU Decomposition | [
+LU Decomposition with Partial Pivoting](https://www.youtube.com/watch?v=WgaFycuL8z0) |
