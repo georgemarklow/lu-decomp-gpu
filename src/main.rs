@@ -166,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  CubeCL residual: {:.3e}", gpu_residual);
             println!("  Pivots match: {}, max |LAPACK - CubeCL|: {:.3e}", pivots_match, max_diff);
             
-            if (!pivots_match) {
+            if !pivots_match {
                 println!("\nPivots do not match");
                 return Err("Pivots do not match".into());
             }
@@ -197,7 +197,7 @@ fn generate_matrix(n: usize, seed: u64) -> Vec<f32> {
 
     for col in 0..n {
         for row in 0..n {
-            matrix[col * n + row] = rng.gen_range(0.0..1.0);
+            matrix[col * n + row] = rng.random_range(0.0..1.0);
         }
     }
 

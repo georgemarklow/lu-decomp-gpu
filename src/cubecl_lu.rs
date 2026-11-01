@@ -74,10 +74,10 @@ fn run_lu<R: Runtime>(device: &R::Device, matrix: &mut [f32], n: usize) -> Vec<i
     }
 
     // Copy the factored matrix and the pivots back to the CPU.
-    let a_bytes = client.read_one(a.binding());
+    let a_bytes = client.read_one(a);
     matrix.copy_from_slice(f32::from_bytes(&a_bytes));
 
-    let piv_bytes = client.read_one(piv.binding());
+    let piv_bytes = client.read_one(piv);
     u32::from_bytes(&piv_bytes)
         .iter()
         .map(|&p| p as i32 + 1) // 0-based -> 1-based, like LAPACK
@@ -152,7 +152,7 @@ fn scale_column<F: Float>(a: &mut Array<F>, n: u32, k: u32) {
     let i = k + 1 + ABSOLUTE_POS;
     if i < n {
         let pivot = a[k * n + k];
-        if pivot != F::new(0.0) {
+        if pivot != F::new(0.0_f32) {
             a[k * n + i] = a[k * n + i] / pivot;
         }
     }
