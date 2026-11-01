@@ -7,6 +7,11 @@
 cargo run --release
 ```
 
+## Analyse results
+```aiignore
+python3 scripts/analyse.py
+```
+
 ## Plot results
 ```aiignore
 python3 scripts/plot_results.py
