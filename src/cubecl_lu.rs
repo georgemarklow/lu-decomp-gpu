@@ -31,7 +31,7 @@ fn run_lu<R: Runtime>(device: &R::Device, matrix: &mut [f32], n: usize) -> Vec<i
             find_pivot::launch_unchecked::<f32, R>(
                 &client,
                 CubeCount::Static(1, 1, 1),
-                CubeDim::new(1, 1, 1),
+                CubeDim::new(PIVOT_THREADS, 1, 1),
                 ArrayArg::from_raw_parts::<f32>(&a, len, 1),
                 ArrayArg::from_raw_parts::<u32>(&piv, n, 1),
                 ScalarArg::new(n_u32),
@@ -84,20 +84,51 @@ fn run_lu<R: Runtime>(device: &R::Device, matrix: &mut [f32], n: usize) -> Vec<i
         .collect()
 }
 
-/// Single thread: finds the index of the largest |A[i, k]| for i >= k.
+const PIVOT_THREADS: u32 = 256;
+
+/// One cube of PIVOT_THREADS threads: finds the index of the largest
+/// |A[i, k]| for i >= k using a shared-memory reduction.
+/// Ties go to the lowest row index, matching LAPACK's isamax.
 #[cube(launch_unchecked)]
 fn find_pivot<F: Float>(a: &Array<F>, piv: &mut Array<u32>, n: u32, k: u32) {
-    if ABSOLUTE_POS == 0 {
-        let mut best = k;
-        let mut best_val = F::abs(a[k * n + k]);
-        for i in k + 1..n {
-            let v = F::abs(a[k * n + i]);
-            if v > best_val {
-                best_val = v;
-                best = i;
+    let tid = UNIT_POS;
+    let mut vals = SharedMemory::<F>::new(256);
+    let mut idxs = SharedMemory::<u32>::new(256);
+
+    // Each thread scans rows k + tid, k + tid + CUBE_DIM_X, ...
+    let mut best = k;
+    let mut best_val = F::new(-1.0_f32);
+    let mut i = k + tid;
+    while i < n {
+        let v = F::abs(a[k * n + i]);
+        if v > best_val {
+            best_val = v;
+            best = i;
+        }
+        i += CUBE_DIM_X;
+    }
+    vals[tid] = best_val;
+    idxs[tid] = best;
+    sync_cube();
+
+    // Tree reduction: 256 -> 128 -> ... -> 1.
+    // stride starts from CUBE_DIM_X so it is a runtime variable, not a constant.
+    let mut stride = CUBE_DIM_X / 2;
+    while stride > 0 {
+        if tid < stride {
+            let other_val = vals[tid + stride];
+            let other_idx = idxs[tid + stride];
+            if other_val > vals[tid] || (other_val == vals[tid] && other_idx < idxs[tid]) {
+                vals[tid] = other_val;
+                idxs[tid] = other_idx;
             }
         }
-        piv[k] = best;
+        sync_cube();
+        stride /= 2;
+    }
+
+    if tid == 0 {
+        piv[k] = idxs[0];
     }
 }
 

@@ -3,6 +3,8 @@ extern crate lapack_src;
 
 mod benchmark_csv;
 mod cubecl_lu;
+pub mod lapack_lu;
+mod utilities;
 
 use chrono::Utc;
 use std::path::PathBuf;
@@ -11,6 +13,8 @@ use std::time::Instant;
 use std::fs::create_dir_all;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use crate::cubecl_lu::run_cubecl_gpu_lu;
+use crate::lapack_lu::run_lapack_lu;
+use crate::utilities::{compare_lu, lu_residual};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -63,11 +67,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let start = Instant::now();
 
             // Execute your existing LAPACK LU routine.
-            run_lapack_lu(&mut matrix, n);
+            let lapack_piv = run_lapack_lu(&mut matrix, n);
 
             // Stop timing.
             let compute_ms =
                 start.elapsed().as_secs_f64() * 1000.0;
+
+            // Compute LAPACK residual
+            let lapack_residual = lu_residual(&original_matrix, &matrix, &lapack_piv, n);
 
             println!(
                 "n={}, repetition={}, time={:.4} ms",
@@ -92,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 h2d_ms: None,
                 d2h_ms: None,
                 total_ms: compute_ms,
-                residual: None,
+                residual: Some(lapack_residual),
                 status: "success".to_string(),
             };
 
@@ -114,11 +121,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let start = Instant::now();
 
             // Execute your existing LAPACK LU routine.
-            run_cubecl_gpu_lu(&mut matrix, n);
+            let gpu_piv = run_cubecl_gpu_lu(&mut matrix, n);
 
             // Stop timing.
             let compute_ms =
                 start.elapsed().as_secs_f64() * 1000.0;
+
+            let gpu_residual = lu_residual(&original_matrix, &matrix, &gpu_piv, n);
 
             println!(
                 "n={}, repetition={}, time={:.4} ms",
@@ -143,9 +152,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 h2d_ms: None,
                 d2h_ms: None,
                 total_ms: compute_ms,
-                residual: None,
+                residual: Some(gpu_residual),
                 status: "success".to_string(),
             };
+
+            ///////////////////////////
+            // Verify LU results equal
+            ///////////////////////////
+
+            let (pivots_match, max_diff) = compare_lu(&matrix, &lapack_piv, &matrix, &gpu_piv);
+
+            println!("  LAPACK residual: {:.3e}", lapack_residual);
+            println!("  CubeCL residual: {:.3e}", gpu_residual);
+            println!("  Pivots match: {}, max |LAPACK - CubeCL|: {:.3e}", pivots_match, max_diff);
+            
+            if (!pivots_match) {
+                println!("\nPivots do not match");
+                return Err("Pivots do not match".into());
+            }
+
+            ///////////////////////////
+            // Save data to CSV
+            ///////////////////////////
 
             println!("Saving benchmark results to: {}", csv_path.display());
 
@@ -174,30 +202,4 @@ fn generate_matrix(n: usize, seed: u64) -> Vec<f32> {
     }
 
     matrix
-}
-
-/// Computes the LU factorization of an n x n column-major matrix in place,
-/// using LAPACK sgetrf with partial pivoting.
-///
-/// After the call, `matrix` holds U in its upper triangle and L (whose
-/// diagonal of 1s is not stored) in its strict lower triangle.
-/// The returned pivot indices are 1-based, as in Fortran.
-fn run_lapack_lu(matrix: &mut [f32], n: usize) -> Vec<i32> {
-    assert_eq!(matrix.len(), n * n, "matrix must be n x n");
-
-    let n_i32 = n as i32;
-    let mut ipiv = vec![0i32; n];
-    let mut info = 0;
-
-    unsafe {
-        lapack::sgetrf(n_i32, n_i32, matrix, n_i32, &mut ipiv, &mut info);
-    }
-
-    if info < 0 {
-        panic!("sgetrf: argument {} had an illegal value", -info);
-    } else if info > 0 {
-        eprintln!("sgetrf: U({0},{0}) is exactly zero; matrix is singular", info);
-    }
-
-    ipiv
 }
