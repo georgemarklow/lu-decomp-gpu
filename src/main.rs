@@ -5,6 +5,7 @@ mod benchmark_csv;
 mod cubecl_lu;
 pub mod lapack_lu;
 mod utilities;
+mod cubecl_cpu_lu;
 
 use chrono::Utc;
 use std::path::PathBuf;
@@ -121,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let start = Instant::now();
 
             // Execute your existing LAPACK LU routine.
-            let gpu_piv = run_cubecl_gpu_lu(&mut matrix, n);
+            let gpu_piv = run_cubecl_gpu_lu(&mut matrix, n, 256);
 
             // Stop timing.
             let compute_ms =
