@@ -216,6 +216,16 @@ print("\nSummary saved.")
 
 def plot_metric(column, ylabel, title, filename):
 
+    # Draw each plot twice: linear axes, and log axes (saved with "_log").
+    for log_scale in (False, True):
+        plot_metric_once(column, ylabel, title, filename, log_scale)
+
+
+def plot_metric_once(column, ylabel, title, filename, log_scale):
+
+    if log_scale:
+        filename = f"{filename}_log"
+
     fig, ax = plt.subplots(figsize=(8, 5))
 
     for name, data in summary.groupby("implementation"):
@@ -234,7 +244,22 @@ def plot_metric(column, ylabel, title, filename):
     ax.set_ylabel(ylabel)
     ax.set_title(title)
 
-    ax.grid(True, alpha=0.3)
+    if log_scale:
+        # Say on the axes and in the title that the scales are logarithmic.
+        ax.set_xlabel("Matrix size (n × n), log₂ scale")
+        ax.set_ylabel(f"{ylabel}, log₁₀ scale")
+        ax.set_title(f"{title} (log–log scale)")
+
+        # Log scale on both axes. Matrix sizes double each step, so a base-2
+        # x-axis spaces them evenly; label the ticks with the actual sizes.
+        ax.set_xscale("log", base=2)
+        ax.set_yscale("log")
+        ax.set_xticks(sorted(summary["matrix_size"].unique()))
+        ax.xaxis.set_major_formatter(plt.ScalarFormatter())
+        ax.grid(True, which="both", alpha=0.3)
+    else:
+        ax.grid(True, alpha=0.3)
+
     ax.legend()
 
     fig.tight_layout()
@@ -319,45 +344,64 @@ if required_implementations.issubset(pivot.columns):
             run_dir / "speedup.csv"
         )
 
-        fig, ax = plt.subplots(figsize=(8, 5))
+        # Draw the plot twice: linear axes, and log axes (saved with "_log").
+        for log_scale in (False, True):
 
-        ax.plot(
-            comparable.index,
-            comparable["speedup"],
-            marker="o",
-            linewidth=2,
-            label="GPU speedup",
-        )
+            filename = "gpu_speedup_log" if log_scale else "gpu_speedup"
 
-        ax.axhline(
-            y=1.0,
-            linestyle="--",
-            label="Equal performance",
-        )
+            fig, ax = plt.subplots(figsize=(8, 5))
 
-        ax.set_xlabel("Matrix size (n × n)")
-        ax.set_ylabel("Speedup (CPU time / GPU time)")
-        ax.set_title("GPU Speedup Relative to LAPACK")
+            ax.plot(
+                comparable.index,
+                comparable["speedup"],
+                marker="o",
+                linewidth=2,
+                label="GPU speedup",
+            )
 
-        ax.grid(True, alpha=0.3)
-        ax.legend()
+            ax.axhline(
+                y=1.0,
+                linestyle="--",
+                label="Equal performance",
+            )
 
-        fig.tight_layout()
+            ax.set_xlabel("Matrix size (n × n)")
+            ax.set_ylabel("Speedup (CPU time / GPU time)")
+            ax.set_title("GPU Speedup Relative to LAPACK")
 
-        fig.savefig(
-            figures_dir / "gpu_speedup.pdf",
-            bbox_inches="tight"
-        )
+            if log_scale:
+                # Say on the axes and in the title that the scales are logarithmic.
+                ax.set_xlabel("Matrix size (n × n), log₂ scale")
+                ax.set_ylabel("Speedup (CPU time / GPU time), log₁₀ scale")
+                ax.set_title("GPU Speedup Relative to LAPACK (log–log scale)")
 
-        fig.savefig(
-            figures_dir / "gpu_speedup.png",
-            dpi=300,
-            bbox_inches="tight"
-        )
+                # Log scale on both axes, matching the other plots.
+                ax.set_xscale("log", base=2)
+                ax.set_yscale("log")
+                ax.set_xticks(sorted(comparable.index))
+                ax.xaxis.set_major_formatter(plt.ScalarFormatter())
+                ax.grid(True, which="both", alpha=0.3)
+            else:
+                ax.grid(True, alpha=0.3)
 
-        plt.close(fig)
+            ax.legend()
 
-        print("Generated: gpu_speedup.pdf and .png")
+            fig.tight_layout()
+
+            fig.savefig(
+                figures_dir / f"{filename}.pdf",
+                bbox_inches="tight"
+            )
+
+            fig.savefig(
+                figures_dir / f"{filename}.png",
+                dpi=300,
+                bbox_inches="tight"
+            )
+
+            plt.close(fig)
+
+            print(f"Generated: {filename}.pdf and .png")
 
     else:
         print(
