@@ -1,0 +1,2 @@
+run_id,timestamp_utc,trial_id,implementation,backend,matrix_size,precision,pivoting,seed,repetition,cpu_threads,block_size,compute_ms,h2d_ms,d2h_ms,total_ms,residual,status
+run_2026-11-02_10-20-38_409597000,,1,lapack_cpu,openblas,128,f32,partial,42,1,1,,0.930583,,,0.930583,2.2876601746908484e-7,success

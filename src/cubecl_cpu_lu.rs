@@ -7,6 +7,7 @@ use cubecl::prelude::*;
 /// Output layout matches LAPACK sgetrf: U in the upper triangle, L (whose
 /// diagonal of 1s is not stored) in the strict lower triangle, and 1-based
 /// pivot indices.
+#[allow(dead_code)]
 pub fn run_cubecl_cpu_lu(matrix: &mut [f32], n: usize) -> Vec<i32> {
     assert_eq!(matrix.len(), n * n, "matrix must be n x n");
 
@@ -60,6 +61,7 @@ pub fn run_cubecl_cpu_lu(matrix: &mut [f32], n: usize) -> Vec<i32> {
         .collect()
 }
 
+#[allow(dead_code)]
 const CPU_THREADS: u32 = 64;
 
 /// Single thread: finds the pivot in column k, swaps rows k and p across

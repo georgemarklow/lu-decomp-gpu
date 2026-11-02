@@ -13,7 +13,7 @@ use benchmark_csv::{save_result, BenchmarkResult};
 use std::time::Instant;
 use std::fs::create_dir_all;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use crate::cubecl_lu::run_cubecl_gpu_lu;
+use crate::cubecl_lu::lu_cpu;
 use crate::lapack_lu::run_lapack_lu;
 use crate::utilities::{compare_lu, lu_residual};
 
@@ -87,8 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 run_id: run_id.clone(),
                 timestamp_utc: String::new(),
                 trial_id: repetition as u32,
-                implementation: "lapack_cpu".to_string(),
-                backend: "openblas".to_string(),
+                implementation: "LAPACK CPU".to_string(),
+                backend: "LAPACK CPU".to_string(),
                 matrix_size: n,
                 precision: "f32".to_string(),
                 pivoting: "partial".to_string(),
@@ -122,13 +122,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let start = Instant::now();
 
             // Execute your existing LAPACK LU routine.
-            let gpu_piv = run_cubecl_gpu_lu(&mut matrix, n, 256);
+            let cubecl_cpu = lu_cpu(&mut matrix, n);
 
             // Stop timing.
             let compute_ms =
                 start.elapsed().as_secs_f64() * 1000.0;
 
-            let gpu_residual = lu_residual(&original_matrix, &matrix, &gpu_piv, n);
+            let gpu_residual = lu_residual(&original_matrix, &matrix, &cubecl_cpu, n);
 
             println!(
                 "n={}, repetition={}, time={:.4} ms",
@@ -140,8 +140,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 run_id: run_id.clone(),
                 timestamp_utc: String::new(),
                 trial_id: repetition as u32,
-                implementation: "cubecl".to_string(),
-                backend: "cubecl".to_string(),
+                implementation: "CUBECL CPU".to_string(),
+                backend: "CUBECL CPU".to_string(),
                 matrix_size: n,
                 precision: "f32".to_string(),
                 pivoting: "partial".to_string(),
@@ -161,7 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Verify LU results equal
             ///////////////////////////
 
-            let (pivots_match, max_diff) = compare_lu(&matrix, &lapack_piv, &matrix, &gpu_piv);
+            let (pivots_match, max_diff) = compare_lu(&matrix, &lapack_piv, &matrix, &cubecl_cpu);
 
             println!("  LAPACK residual: {:.3e}", lapack_residual);
             println!("  CubeCL residual: {:.3e}", gpu_residual);
