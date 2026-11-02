@@ -1,7 +1,7 @@
 /// Factors an n x n column-major matrix in place with partial pivoting.
 /// Returns 1-based pivot indices, like LAPACK sgetrf.
 /// Element A[row, col] is stored at index col * n + row.
-pub fn lu_cpu(matrix: &mut [f32], n: usize) -> Vec<i32> {
+pub fn run_naive_rust_lu(matrix: &mut [f32], n: usize) -> Vec<i32> {
     let mut piv = vec![0u32; n];
 
     for k in 0..n {
@@ -67,7 +67,7 @@ mod tests {
         let lapack_pivots = run_lapack_lu(&mut lapack_matrix, n);
 
         let mut matrix = matrix_orig.clone();
-        let pivots = lu_cpu(&mut matrix, n);
+        let pivots = run_cubecl_lu_cpu(&mut matrix, n);
 
         // Pivots and LU factors should match LAPACK
         assert_eq!(pivots, lapack_pivots);
