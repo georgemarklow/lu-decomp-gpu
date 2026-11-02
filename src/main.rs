@@ -22,11 +22,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     const SEED: u64 = 42;
 
-    // CPU threads for the CubeCL CPU runtime's trailing update.
-    const CPU_THREADS: u32 = 4;
+    // CPU thread counts to benchmark for the CubeCL CPU runtime's trailing update.
+    const CPU_THREAD_COUNTS: [u32; 4] = [1, 2, 4, 8];
 
-    // Threads per cube for the CubeCL GPU kernels (must be a power of two).
-    const GPU_THREADS: u32 = 256;
+    // Threads per cube to benchmark for the CubeCL GPU kernels
+    // (each must be a power of two, at most the device limit).
+    const GPU_THREAD_COUNTS: [u32; 5] = [16, 32, 64, 128, 256];
 
     // STEP 1: Generate a unique timestamp.
     let timestamp = Utc::now()
@@ -60,6 +61,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Generate one reproducible input matrix
         // for this matrix size.
         let original_matrix = generate_matrix(n, SEED);
+
+        // STEP 4: Warm up each CubeCL configuration once (untimed), so kernel
+        // compilation for each thread count is not counted in repetition 1.
+        for &threads in &CPU_THREAD_COUNTS {
+            run_cubecl_cpu_lu(&mut original_matrix.clone(), n, threads);
+        }
+        for &threads in &GPU_THREAD_COUNTS {
+            run_cubecl_gpu_lu(&mut original_matrix.clone(), n, threads);
+        }
 
         // STEP 5: Run timed repetitions.
         for repetition in 1..=repetitions {
@@ -118,133 +128,137 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &record
             )?;
 
+            println!("  LAPACK residual: {:.3e}", lapack_residual);
+
             ///////////////////////////
             // CubeCL CPU Benchmarking
             ///////////////////////////
 
-            // Restore the matrix before each run.
-            let mut cpu_matrix = original_matrix.clone();
+            for &threads in &CPU_THREAD_COUNTS {
 
-            // Start timing.
-            let start = Instant::now();
+                let label = format!("CUBECL CPU ({} threads)", threads);
 
-            // Execute CubeCL on the CPU runtime.
-            let cpu_piv = run_cubecl_cpu_lu(&mut cpu_matrix, n, CPU_THREADS);
+                // Restore the matrix before each run.
+                let mut cpu_matrix = original_matrix.clone();
 
-            // Stop timing.
-            let compute_ms =
-                start.elapsed().as_secs_f64() * 1000.0;
+                // Start timing.
+                let start = Instant::now();
 
-            let cpu_residual = lu_residual(&original_matrix, &cpu_matrix, &cpu_piv, n);
+                // Execute CubeCL on the CPU runtime.
+                let cpu_piv = run_cubecl_cpu_lu(&mut cpu_matrix, n, threads);
 
-            println!(
-                "n={}, repetition={}, time={:.4} ms",
-                n, repetition, compute_ms
-            );
+                // Stop timing.
+                let compute_ms =
+                    start.elapsed().as_secs_f64() * 1000.0;
 
-            // Create CSV record.
-            let cubecl_cpu_record = BenchmarkResult {
-                run_id: run_id.clone(),
-                timestamp_utc: String::new(),
-                trial_id: repetition as u32,
-                implementation: "CUBECL CPU".to_string(),
-                backend: "CUBECL CPU".to_string(),
-                matrix_size: n,
-                precision: "f32".to_string(),
-                pivoting: "partial".to_string(),
-                seed: SEED,
-                repetition: repetition as u32,
-                cpu_threads: Some(CPU_THREADS),
-                block_size: None,
-                compute_ms,
-                h2d_ms: None,
-                d2h_ms: None,
-                total_ms: compute_ms,
-                residual: Some(cpu_residual),
-                status: "success".to_string(),
-            };
+                let cpu_residual = lu_residual(&original_matrix, &cpu_matrix, &cpu_piv, n);
 
-            save_result(
-                csv_path.to_str().expect("Invalid CSV path"),
-                &cubecl_cpu_record
-            )?;
+                // Verify against LAPACK.
+                let (pivots_match, max_diff) =
+                    compare_lu(&lapack_matrix, &lapack_piv, &cpu_matrix, &cpu_piv);
+
+                println!(
+                    "n={}, repetition={}, {}: time={:.4} ms, residual={:.3e}, pivots match={}, max |LAPACK - CubeCL|={:.3e}",
+                    n, repetition, label, compute_ms, cpu_residual, pivots_match, max_diff
+                );
+
+                if !pivots_match {
+                    println!("\nPivots do not match");
+                    return Err("Pivots do not match".into());
+                }
+
+                // Create CSV record.
+                let cubecl_cpu_record = BenchmarkResult {
+                    run_id: run_id.clone(),
+                    timestamp_utc: String::new(),
+                    trial_id: repetition as u32,
+                    implementation: label.clone(),
+                    backend: "CUBECL CPU".to_string(),
+                    matrix_size: n,
+                    precision: "f32".to_string(),
+                    pivoting: "partial".to_string(),
+                    seed: SEED,
+                    repetition: repetition as u32,
+                    cpu_threads: Some(threads),
+                    block_size: None,
+                    compute_ms,
+                    h2d_ms: None,
+                    d2h_ms: None,
+                    total_ms: compute_ms,
+                    residual: Some(cpu_residual),
+                    status: "success".to_string(),
+                };
+
+                save_result(
+                    csv_path.to_str().expect("Invalid CSV path"),
+                    &cubecl_cpu_record
+                )?;
+            }
 
             ///////////////////////////
             // CubeCL GPU Benchmarking
             ///////////////////////////
 
-            // Restore the matrix before each run.
-            let mut gpu_matrix = original_matrix.clone();
+            for &threads in &GPU_THREAD_COUNTS {
 
-            // Start timing.
-            let start = Instant::now();
+                let label = format!("CUBECL GPU ({} threads)", threads);
 
-            // Execute CubeCL on the GPU (wgpu / Metal).
-            let gpu_piv = run_cubecl_gpu_lu(&mut gpu_matrix, n, GPU_THREADS);
+                // Restore the matrix before each run.
+                let mut gpu_matrix = original_matrix.clone();
 
-            // Stop timing.
-            let compute_ms =
-                start.elapsed().as_secs_f64() * 1000.0;
+                // Start timing.
+                let start = Instant::now();
 
-            let gpu_residual = lu_residual(&original_matrix, &gpu_matrix, &gpu_piv, n);
+                // Execute CubeCL on the GPU (wgpu / Metal).
+                let gpu_piv = run_cubecl_gpu_lu(&mut gpu_matrix, n, threads);
 
-            println!(
-                "n={}, repetition={}, time={:.4} ms",
-                n, repetition, compute_ms
-            );
+                // Stop timing.
+                let compute_ms =
+                    start.elapsed().as_secs_f64() * 1000.0;
 
-            // Create CSV record.
-            let record = BenchmarkResult {
-                run_id: run_id.clone(),
-                timestamp_utc: String::new(),
-                trial_id: repetition as u32,
-                implementation: "CUBECL GPU".to_string(),
-                backend: "CUBECL GPU".to_string(),
-                matrix_size: n,
-                precision: "f32".to_string(),
-                pivoting: "partial".to_string(),
-                seed: SEED,
-                repetition: repetition as u32,
-                cpu_threads: None,
-                block_size: Some(GPU_THREADS as usize),
-                compute_ms,
-                h2d_ms: None,
-                d2h_ms: None,
-                total_ms: compute_ms,
-                residual: Some(gpu_residual),
-                status: "success".to_string(),
-            };
+                let gpu_residual = lu_residual(&original_matrix, &gpu_matrix, &gpu_piv, n);
 
-            ///////////////////////////
-            // Verify LU results equal
-            ///////////////////////////
+                // Verify against LAPACK.
+                let (pivots_match, max_diff) =
+                    compare_lu(&lapack_matrix, &lapack_piv, &gpu_matrix, &gpu_piv);
 
-            let (cpu_pivots_match, cpu_max_diff) =
-                compare_lu(&lapack_matrix, &lapack_piv, &cpu_matrix, &cpu_piv);
-            let (gpu_pivots_match, gpu_max_diff) =
-                compare_lu(&lapack_matrix, &lapack_piv, &gpu_matrix, &gpu_piv);
+                println!(
+                    "n={}, repetition={}, {}: time={:.4} ms, residual={:.3e}, pivots match={}, max |LAPACK - CubeCL|={:.3e}",
+                    n, repetition, label, compute_ms, gpu_residual, pivots_match, max_diff
+                );
 
-            println!("  LAPACK residual:     {:.3e}", lapack_residual);
-            println!("  CubeCL CPU residual: {:.3e}", cpu_residual);
-            println!("  CubeCL GPU residual: {:.3e}", gpu_residual);
-            println!("  CPU pivots match: {}, max |LAPACK - CubeCL CPU|: {:.3e}", cpu_pivots_match, cpu_max_diff);
-            println!("  GPU pivots match: {}, max |LAPACK - CubeCL GPU|: {:.3e}", gpu_pivots_match, gpu_max_diff);
+                if !pivots_match {
+                    println!("\nPivots do not match");
+                    return Err("Pivots do not match".into());
+                }
 
-            if !cpu_pivots_match || !gpu_pivots_match {
-                println!("\nPivots do not match");
-                return Err("Pivots do not match".into());
+                // Create CSV record.
+                let cubecl_gpu_record = BenchmarkResult {
+                    run_id: run_id.clone(),
+                    timestamp_utc: String::new(),
+                    trial_id: repetition as u32,
+                    implementation: label.clone(),
+                    backend: "CUBECL GPU".to_string(),
+                    matrix_size: n,
+                    precision: "f32".to_string(),
+                    pivoting: "partial".to_string(),
+                    seed: SEED,
+                    repetition: repetition as u32,
+                    cpu_threads: None,
+                    block_size: Some(threads as usize),
+                    compute_ms,
+                    h2d_ms: None,
+                    d2h_ms: None,
+                    total_ms: compute_ms,
+                    residual: Some(gpu_residual),
+                    status: "success".to_string(),
+                };
+
+                save_result(
+                    csv_path.to_str().expect("Invalid CSV path"),
+                    &cubecl_gpu_record
+                )?;
             }
-
-            ///////////////////////////
-            // Save data to CSV
-            ///////////////////////////
-
-            println!("Saving benchmark results to: {}", csv_path.display());
-
-            save_result(
-                csv_path.to_str().expect("Invalid CSV path"),
-                &record
-            )?;
         }
     }
 
