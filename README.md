@@ -1,6 +1,6 @@
-[![Rust](https://github.com/georgemarklow/lu-decomp-gpu/actions/workflows/rust.yml/badge.svg)](https://github.com/georgemarklow/lu-decomp-gpu/actions/workflows/rust.yml)
-
 # Steps
+
+Run these commands in the RustRover terminal one after the other:
 
 ## Run benchmarks
 ```aiignore
@@ -16,6 +16,9 @@ python3 scripts/analyse.py
 ```aiignore
 python3 scripts/plot_results.py
 ```
+
+<img width="1039" height="941" alt="Screenshot 2026-11-06 at 15 24 15" src="https://github.com/user-attachments/assets/9f6aecfa-706c-4588-95ed-38dc381399df" />
+
 
 ## Resources
 | Item | Link |
