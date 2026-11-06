@@ -29,31 +29,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // (each must be a power of two, at most the device limit).
     const GPU_THREAD_COUNTS: [u32; 5] = [16, 32, 64, 128, 256];
 
-    // STEP 1: Generate a unique timestamp.
     let timestamp = Utc::now()
         .format("%Y-%m-%d_%H-%M-%S_%f")
         .to_string();
 
-    // STEP 2: Create a unique folder name.
     let run_id = format!("run_{}", timestamp);
 
-    // STEP 3: Define the folder path.
     let run_dir = PathBuf::from("results").join(&run_id);
 
-    // STEP 4: Create the folder.
     create_dir_all(&run_dir)?;
 
-    // STEP 5: Define the CSV file path.
     let csv_path = run_dir.join("raw_lu.csv");
 
     println!("Saving results to: {}", csv_path.display());
-    // STEP 1: Choose matrix sizes to benchmark.
+
+    // Choose matrix sizes to benchmark.
     let matrix_sizes = [128, 256, 512, 1024, 2048];
 
-    // STEP 2: Number of timed repetitions.
+    // How many times to run the same computation.
     let repetitions = 10;
 
-    // STEP 3: Loop through each matrix size.
     for &n in &matrix_sizes {
 
         println!("\nBenchmarking {} x {} matrix", n, n);
@@ -62,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // for this matrix size.
         let original_matrix = generate_matrix(n, SEED);
 
-        // STEP 4: Warm up each CubeCL configuration once (untimed), so kernel
+        // Warm up each CubeCL configuration once (untimed), so kernel
         // compilation for each thread count is not counted in repetition 1.
         for &threads in &CPU_THREAD_COUNTS {
             run_cubecl_cpu_lu(&mut original_matrix.clone(), n, threads);
@@ -71,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             run_cubecl_gpu_lu(&mut original_matrix.clone(), n, threads);
         }
 
-        // STEP 5: Run timed repetitions.
+        // Run timed repetitions.
         for repetition in 1..=repetitions {
 
             ///////////////////////////
@@ -99,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 n, repetition, compute_ms
             );
 
-            // STEP 6: Create CSV record.
+            // Create CSV record.
             let record = BenchmarkResult {
                 run_id: run_id.clone(),
                 timestamp_utc: String::new(),
